@@ -1,0 +1,36 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+*.userprefs
+*.sln.docstates
+.vs/
+
+## Node
+node_modules/
+dist/
+.env.local
+
+## IDE
+.idea/
+*.swp
+*.swo
+*~
+
+## Docker
+docker-compose.override.yml
+
+## OS
+Thumbs.db
+.DS_Store
+
+## Test results
+TestResults/
+coverage/
+
+## Interview prep (personal — not for submission)
+docs/interview-qa.md
+
+## Assignment PDF
+Industrial_Real_Time_Home_Assignment.pdf

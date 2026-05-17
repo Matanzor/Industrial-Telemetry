@@ -1,0 +1,128 @@
+services:
+  # ── Infrastructure ──────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - landa-net
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - landa-net
+
+  mysql:
+    image: mysql:8.0
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: Root_pass1
+      MYSQL_DATABASE: telemetrydb
+      MYSQL_USER: telemetry
+      MYSQL_PASSWORD: Telemetry_pass1
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pRoot_pass1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - landa-net
+
+  # ── Application Services ────────────────────────────────────────
+  iot-telemetry-service:
+    build:
+      context: .
+      dockerfile: src/IoTTelemetryService/Dockerfile
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      Redis__ConnectionString: redis:6379
+      RabbitMq__Host: rabbitmq
+      RabbitMq__Port: 5672
+      RabbitMq__Username: guest
+      RabbitMq__Password: guest
+    networks:
+      - landa-net
+
+  sql-data-service:
+    build:
+      context: .
+      dockerfile: src/SqlDataService/Dockerfile
+    ports:
+      - "5001:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      ConnectionStrings__MySql: "Server=mysql;Port=3306;Database=telemetrydb;User=telemetry;Password=Telemetry_pass1;"
+      RabbitMq__Host: rabbitmq
+      RabbitMq__Port: 5672
+      RabbitMq__Username: guest
+      RabbitMq__Password: guest
+    networks:
+      - landa-net
+
+  rest-api-service:
+    build:
+      context: .
+      dockerfile: src/RestApiService/Dockerfile
+    ports:
+      - "5000:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      sql-data-service:
+        condition: service_started
+    environment:
+      Redis__ConnectionString: redis:6379
+      RabbitMq__Host: rabbitmq
+      RabbitMq__Port: 5672
+      RabbitMq__Username: guest
+      RabbitMq__Password: guest
+      Grpc__SqlDataServiceUrl: http://sql-data-service:8080
+    networks:
+      - landa-net
+
+  ui:
+    build:
+      context: ./src/ui
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - rest-api-service
+    networks:
+      - landa-net
+
+volumes:
+  mysql-data:
+
+networks:
+  landa-net:
+    driver: bridge

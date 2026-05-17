@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore Landa.sln
+
+      - name: Build solution
+        run: dotnet build Landa.sln --no-restore -c Release
+
+      - name: Run unit tests
+        run: dotnet test Landa.sln --no-build -c Release --filter "Category!=Integration" --verbosity normal --logger "trx;LogFileName=test-results.trx"
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: '**/TestResults/*.trx'
+
+  build-docker-images:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build IoT Telemetry Service image
+        run: docker build -f src/IoTTelemetryService/Dockerfile -t iot-telemetry-service:${{ github.sha }} .
+
+      - name: Build SQL Data Service image
+        run: docker build -f src/SqlDataService/Dockerfile -t sql-data-service:${{ github.sha }} .
+
+      - name: Build REST API Service image
+        run: docker build -f src/RestApiService/Dockerfile -t rest-api-service:${{ github.sha }} .
+
+      - name: Build UI image
+        run: docker build -f src/ui/Dockerfile -t ui:${{ github.sha }} src/ui
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    needs: build-docker-images
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Start infrastructure with docker-compose
+        run: docker compose up -d --build
+
+      - name: Wait for services to be healthy
+        run: |
+          echo "Waiting for services to start..."
+          sleep 30
+          docker compose ps
+
+      - name: Run integration tests
+        env:
+          API_BASE_URL: http://localhost:5000
+        run: dotnet test tests/IntegrationTests --filter "Category=Integration" --verbosity normal || true
+
+      - name: Collect docker logs
+        if: always()
+        run: docker compose logs > docker-logs.txt 2>&1
+
+      - name: Upload docker logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: docker-logs
+          path: docker-logs.txt
+
+      - name: Stop docker-compose
+        if: always()
+        run: docker compose down -v

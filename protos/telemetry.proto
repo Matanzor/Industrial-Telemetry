@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+option csharp_namespace = "Shared.Grpc";
+
+package telemetry;
+
+service TelemetryService {
+  rpc GetAllSensors (GetAllSensorsRequest) returns (GetAllSensorsResponse);
+  rpc GetSensorById (GetSensorByIdRequest) returns (SensorReadingDto);
+  rpc GetSensorHistory (GetSensorHistoryRequest) returns (GetSensorHistoryResponse);
+}
+
+message GetAllSensorsRequest {}
+
+message GetAllSensorsResponse {
+  repeated SensorReadingDto sensors = 1;
+}
+
+message GetSensorByIdRequest {
+  int32 sensor_id = 1;
+}
+
+message GetSensorHistoryRequest {
+  int32 sensor_id = 1;
+  string from_timestamp = 2;
+  string to_timestamp = 3;
+  int32 page = 4;
+  int32 page_size = 5;
+}
+
+message GetSensorHistoryResponse {
+  repeated SensorReadingDto readings = 1;
+  int32 total_count = 2;
+}
+
+message SensorReadingDto {
+  int32 sensor_id = 1;
+  string sensor_type = 2;
+  double value = 3;
+  string unit = 4;
+  string timestamp = 5;
+  string status = 6;
+}
